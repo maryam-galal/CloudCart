@@ -1,0 +1,321 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  CloudCart compute layer: NAT for app subnets only,
+  internet-facing ALB, private EC2 Auto Scaling Group,
+  and least-privilege application artifact access.
+
+Parameters:
+  PublicSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-070839f2772443e08
+
+  PublicSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-03b840c4f1a7dc09e
+
+  AppSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0b479cbb382ca8321
+
+  AppSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0873e37a207c03f54
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-02c5584f904864d0b
+
+  AppPrivateRouteTableId:
+    Type: String
+    Default: rtb-03ab34749973a8987
+    Description: App route table only; never use the data route table
+
+  ALBSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-04614d113e4e58fee
+
+  AppSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-0a0f6d51f4e69745d
+
+  AppArtifactBucket:
+    Type: String
+    Description: S3 bucket containing the application ZIP
+
+  AppArtifactKey:
+    Type: String
+    Default: artifacts/cloudcart-app-fixed-v3.zip
+    Description: S3 object key for the application ZIP
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+  HealthCheckPath:
+    Type: String
+    Default: /health
+    Description: Application endpoint returning HTTP 200
+
+Resources:
+  # NAT Gateway for outbound internet access from app subnets.
+  # The data subnets and their route table are not modified.
+  NatElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: CloudCart-NAT-EIP
+
+  AppNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnetAId
+      ConnectivityType: public
+      Tags:
+        - Key: Name
+          Value: CloudCart-App-NAT
+
+  AppDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AppNatGateway
+    Properties:
+      RouteTableId: !Ref AppPrivateRouteTableId
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref AppNatGateway
+
+  # Add outbound web access to the existing application SG.
+  # Existing DB and EFS egress rules are preserved.
+  AppEgressHTTP:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AppSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+      Description: Allow application HTTP downloads
+
+  AppEgressHTTPS:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AppSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: Allow HTTPS downloads including S3
+
+  AppInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ReadCloudCartApplicationArtifact
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${AppArtifactBucket}/${AppArtifactKey}'
+      Tags:
+        - Key: Name
+          Value: CloudCart-App-Instance-Role
+
+  AppInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref AppInstanceRole
+
+  AppLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: CloudCart-App-LaunchTemplate
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt AppInstanceProfile.Arn
+        SecurityGroupIds:
+          - !Ref AppSecurityGroupId
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: 10
+              VolumeType: gp3
+              Encrypted: true
+              DeleteOnTermination: true
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            set -euxo pipefail
+
+            dnf install -y python3.11 python3.11-pip unzip awscli
+
+            mkdir -p /opt/cloudcart
+
+            aws s3 cp \
+              "s3://${AppArtifactBucket}/${AppArtifactKey}" \
+              /tmp/cloudcart-app.zip \
+              --region ${AWS::Region}
+
+            unzip -o /tmp/cloudcart-app.zip -d /opt/cloudcart
+
+            python3.11 -m venv /opt/cloudcart/venv
+            /opt/cloudcart/venv/bin/python -m pip install --upgrade pip
+
+            /opt/cloudcart/venv/bin/python -m pip install --no-cache-dir -r /opt/cloudcart/requirements.txt
+
+            cat > /etc/systemd/system/cloudcart.service <<'SERVICE'
+            [Unit]
+            Description=CloudCart FastAPI application
+            After=network-online.target
+            Wants=network-online.target
+
+            [Service]
+            WorkingDirectory=/opt/cloudcart
+            ExecStart=/opt/cloudcart/venv/bin/python -m uvicorn app.main:app --app-dir /opt/cloudcart/backend --host 0.0.0.0 --port 8000
+            Restart=always
+            RestartSec=5
+
+            [Install]
+            WantedBy=multi-user.target
+            SERVICE
+
+            systemctl daemon-reload
+            systemctl enable --now cloudcart
+
+
+  AppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: CloudCart-App-TG
+      VpcId: !Ref VpcId
+      Protocol: HTTP
+      Port: 8000
+      TargetType: instance
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckPort: traffic-port
+      Matcher:
+        HttpCode: '200'
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      Tags:
+        - Key: Name
+          Value: CloudCart-App-TG
+
+  CloudCartALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: CloudCart-ALB
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets:
+        - !Ref PublicSubnetAId
+        - !Ref PublicSubnetBId
+      SecurityGroups:
+        - !Ref ALBSecurityGroupId
+      Tags:
+        - Key: Name
+          Value: CloudCart-ALB
+
+  CloudCartHTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref CloudCartALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AppTargetGroup
+
+  
+  CloudCartAppASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+        PauseTime: PT5M
+    DependsOn:
+      - AppDefaultRoute
+      - AppEgressHTTP
+      - AppEgressHTTPS
+    Properties:
+      AutoScalingGroupName: CloudCart-App-ASG
+      MinSize: '2'
+      DesiredCapacity: '2'
+      MaxSize: '4'
+      VPCZoneIdentifier:
+        - !Ref AppSubnetAId
+        - !Ref AppSubnetBId
+      LaunchTemplate:
+        LaunchTemplateId: !Ref AppLaunchTemplate
+        Version: !GetAtt AppLaunchTemplate.LatestVersionNumber
+      TargetGroupARNs:
+        - !Ref AppTargetGroup
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      Tags:
+        - Key: Name
+          Value: CloudCart-App-Instance
+          PropagateAtLaunch: true
+  
+  CloudCartScalingPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref CloudCartAppASG
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 50.0
+
+Outputs:
+  LoadBalancerDNSName:
+    Description: Public DNS name of the CloudCart ALB
+    Value: !GetAtt CloudCartALB.DNSName
+
+  LoadBalancerArn:
+    Value: !Ref CloudCartALB
+
+  TargetGroupArn:
+    Value: !Ref AppTargetGroup
+
+  AutoScalingGroupName:
+    Value: !Ref CloudCartAppASG
+
+  NatGatewayId:
+    Value: !Ref AppNatGateway
+
+  AppRouteTableId:
+    Description: Route table receiving the NAT default route
+    Value: !Ref AppPrivateRouteTableId
