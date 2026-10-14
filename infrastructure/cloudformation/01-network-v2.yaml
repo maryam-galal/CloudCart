@@ -1,0 +1,196 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudCart network foundation - review before deployment
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: 10.20.0.0/24
+    Description: IPv4 CIDR for the CloudCart VPC
+
+Resources:
+  CloudCartVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: CloudCart-VPC
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      CidrBlock: 10.20.0.0/27
+      AvailabilityZone: eu-north-1a
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CloudCart-Public-A
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      CidrBlock: 10.20.0.32/27
+      AvailabilityZone: eu-north-1b
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CloudCart-Public-B
+
+  AppSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      CidrBlock: 10.20.0.64/27
+      AvailabilityZone: eu-north-1a
+      Tags:
+        - Key: Name
+          Value: CloudCart-App-A
+
+  AppSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      CidrBlock: 10.20.0.96/27
+      AvailabilityZone: eu-north-1b
+      Tags:
+        - Key: Name
+          Value: CloudCart-App-B
+
+  DataSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      CidrBlock: 10.20.0.128/27
+      AvailabilityZone: eu-north-1a
+      Tags:
+        - Key: Name
+          Value: CloudCart-Data-A
+
+  DataSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      CidrBlock: 10.20.0.160/27
+      AvailabilityZone: eu-north-1b
+      Tags:
+        - Key: Name
+          Value: CloudCart-Data-B
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: CloudCart-IGW
+
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      Tags:
+        - Key: Name
+          Value: CloudCart-Public-RT
+
+  PublicInternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachInternetGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      Tags:
+        - Key: Name
+          Value: CloudCart-App-Private-RT
+  
+  DataPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CloudCartVPC
+      Tags:
+        - Key: Name
+          Value: CloudCart-Data-Private-RT
+
+
+  AppSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  AppSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  DataSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DataSubnetA
+      RouteTableId: !Ref DataPrivateRouteTable
+
+  DataSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DataSubnetB
+      RouteTableId: !Ref DataPrivateRouteTable
+
+Outputs:
+  VpcId:
+    Description: CloudCart VPC ID
+    Value: !Ref CloudCartVPC
+
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+
+  AppSubnetAId:
+    Value: !Ref AppSubnetA
+
+  AppSubnetBId:
+    Value: !Ref AppSubnetB
+
+  DataSubnetAId:
+    Value: !Ref DataSubnetA
+
+  DataSubnetBId:
+    Value: !Ref DataSubnetB
+   
+  AppPrivateRouteTableId:
+    Description: Route table for application subnets
+    Value: !Ref PrivateRouteTable
+
+  DataPrivateRouteTableId:
+    Description: Isolated route table for database subnets
+    Value: !Ref DataPrivateRouteTable
+

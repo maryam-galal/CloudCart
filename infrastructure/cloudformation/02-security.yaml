@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudCart security groups for ALB, application, database and EFS
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID from the CloudCart-Network stack
+
+Resources:
+
+  # Security group for the public Application Load Balancer
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow public HTTP traffic to CloudCart ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: []
+      SecurityGroupEgress: []
+      Tags:
+        - Key: Name
+          Value: CloudCart-ALB-SG
+
+  # Security group for private FastAPI application servers
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow application traffic only from the ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: []
+      SecurityGroupEgress: []
+      Tags:
+        - Key: Name
+          Value: CloudCart-App-SG
+
+  # Security group for private RDS MySQL
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL only from application servers
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: []
+      SecurityGroupEgress: []
+      Tags:
+        - Key: Name
+          Value: CloudCart-Database-SG
+
+  # Security group for Amazon EFS
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow NFS only from application servers
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: []
+      SecurityGroupEgress: []
+      Tags:
+        - Key: Name
+          Value: CloudCart-EFS-SG
+
+  # Public HTTP access to the ALB
+  ALBHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+      Description: Allow public HTTP access to the load balancer
+
+  # ALB can send traffic to FastAPI on port 8000
+  ALBToAppEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      DestinationSecurityGroupId: !Ref AppSecurityGroup
+      Description: Forward traffic to application servers
+
+  # Only the ALB can reach the application servers
+  AppFromALBIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AppSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Description: Allow application traffic from the ALB only
+
+  # Application servers can connect to MySQL
+  AppToDatabaseEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AppSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      DestinationSecurityGroupId: !Ref DatabaseSecurityGroup
+      Description: Allow application connections to MySQL
+
+  # RDS accepts MySQL connections only from the application SG
+  DatabaseFromAppIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      SourceSecurityGroupId: !Ref AppSecurityGroup
+      Description: Allow MySQL only from application servers
+
+  # Application servers can connect to EFS over NFS
+  AppToEFSEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AppSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      DestinationSecurityGroupId: !Ref EFSSecurityGroup
+      Description: Allow application connections to EFS
+
+  # EFS accepts NFS connections only from the application SG
+  EFSFromAppIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EFSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref AppSecurityGroup
+      Description: Allow NFS only from application servers
+
+Outputs:
+  VpcId:
+    Description: VPC used by CloudCart security groups
+    Value: !Ref VpcId
+
+  ALBSecurityGroupId:
+    Description: Attach to the internet-facing ALB
+    Value: !Ref ALBSecurityGroup
+
+  AppSecurityGroupId:
+    Description: Attach to private application instances
+    Value: !Ref AppSecurityGroup
+
+  DatabaseSecurityGroupId:
+    Description: Attach to the RDS database
+    Value: !Ref DatabaseSecurityGroup
+
+  EFSSecurityGroupId:
+    Description: Attach to EFS mount targets
+    Value: !Ref EFSSecurityGroup
