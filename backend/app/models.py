@@ -1,4 +1,4 @@
-
+from typing import Optional
 from datetime import datetime
 from decimal import Decimal
 
@@ -49,12 +49,14 @@ class Product(Base):
         BIGINT(unsigned=True), primary_key=True, autoincrement=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+  
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     stock_quantity: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
-    image_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    image_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
 
 class Order(Base):
