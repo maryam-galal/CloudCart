@@ -1,0 +1,154 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Manage the CloudCart product catalog.">
+    <title>CloudCart | Admin Dashboard</title>
+    <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container navbar">
+            <a class="brand" href="./index.html">Cloud<span>Cart</span></a>
+
+            <nav class="nav-links">
+                <a href="./index.html">Storefront</a>
+                <a class="active" href="./admin.html">Admin Dashboard</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container admin-layout">
+        <div class="admin-toolbar">
+            <div>
+                <span class="eyebrow">CloudCart management</span>
+                <h1>Product Dashboard</h1>
+                <p class="muted">Create, update, and manage your product catalog.</p>
+            </div>
+
+            <button id="new-product-button" class="btn btn-primary" type="button">
+                + Add Product
+            </button>
+        </div>
+
+        <div id="admin-message" class="notice hidden" role="status"></div>
+
+        <section id="product-form-panel" class="panel hidden">
+            <h2 id="form-title">Add a Product</h2>
+
+            <form id="product-form">
+                <input type="hidden" id="product-id">
+
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="product-name">Product Name *</label>
+                        <input
+                            id="product-name"
+                            name="name"
+                            type="text"
+                            maxlength="200"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-field">
+                        <label for="product-price">Price (USD) *</label>
+                        <input
+                            id="product-price"
+                            name="price"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-field">
+                        <label for="product-stock">Stock Quantity</label>
+                        <input
+                            id="product-stock"
+                            name="stock_quantity"
+                            type="number"
+                            min="0"
+                            step="1"
+                            value="0"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-field">
+                        <label for="product-image-key">Image Key (optional)</label>
+                        <input
+                            id="product-image-key"
+                            name="image_key"
+                            type="text"
+                            placeholder="e.g. products/mouse.jpg"
+                        >
+                    </div>
+
+                    <div class="form-field full">
+                        <label for="product-description">Description</label>
+                        <textarea
+                            id="product-description"
+                            name="description"
+                            rows="3"
+                            placeholder="Describe the product..."
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:10px; margin-top:20px; flex-wrap:wrap;">
+                    <button id="save-product-button" class="btn btn-primary" type="submit">
+                        Save Product
+                    </button>
+                    <button id="cancel-form-button" class="btn btn-secondary" type="button">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section class="panel">
+            <div class="section-heading">
+                <div>
+                    <h2>Products</h2>
+                    <p class="muted">Products currently returned by the backend API.</p>
+                </div>
+                <button id="reload-products-button" class="btn btn-secondary" type="button">
+                    Refresh
+                </button>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Product</th>
+                            <th>Price</th>
+                            <th>Stock</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-product-list">
+                        <tr>
+                            <td colspan="5">Loading products...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; <span id="admin-current-year"></span> CloudCart Admin</p>
+        </div>
+    </footer>
+
+    <script src="./js/api.js"></script>
+    <script src="./js/admin.js"></script>
+</body>
+</html>
