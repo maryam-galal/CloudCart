@@ -1,0 +1,68 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Discover everyday essentials at CloudCart.">
+    <title>CloudCart | Online Store</title>
+    <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container navbar">
+            <a class="brand" href="./index.html">Cloud<span>Cart</span></a>
+
+            <nav class="nav-links">
+                <a class="active" href="./index.html">Store</a>
+                <a href="./admin.html">Admin</a>
+                <a class="btn btn-primary" href="#products">Shop Now</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container hero-content">
+                <span class="eyebrow">Welcome to CloudCart</span>
+                <h1>Good finds.<br>Delivered to your world.</h1>
+                <p>
+                    Discover practical essentials for your everyday life.
+                    Explore our collection and find something you love.
+                </p>
+                <a class="btn btn-primary" href="#products">Explore Products &rarr;</a>
+            </div>
+        </section>
+
+        <section class="section" id="products">
+            <div class="container">
+                <div class="section-heading">
+                    <div>
+                        <span class="eyebrow">Our collection</span>
+                        <h2>Featured Products</h2>
+                        <p class="muted">Find your next favorite.</p>
+                    </div>
+                    <button class="btn btn-secondary" id="refresh-button" type="button">
+                        Refresh Products
+                    </button>
+                </div>
+
+                <div id="store-message" class="notice hidden" role="status"></div>
+
+                <div id="product-grid" class="product-grid">
+                    <p class="muted">Loading products...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; <span id="current-year"></span> CloudCart. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="./js/api.js"></script>
+    <script src="./js/store.js"></script>
+</body>
+</html>
