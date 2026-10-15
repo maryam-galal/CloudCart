@@ -1,0 +1,7 @@
+# Use the existing Python 3.10-compatible orders and database requirements.
+-r requirements-lama.txt
+-r requirements-orders-db.txt
+# Required by Rawan's signup/login code and the real orders authentication.
+PyJWT>=2.10,<3
+pwdlib[argon2]>=0.3,<1
+email-validator>=2,<3
